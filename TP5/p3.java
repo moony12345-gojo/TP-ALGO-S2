@@ -4,7 +4,6 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.net.ServerSocket;
 import java.net.Socket;
 
 public class p3 {
@@ -14,41 +13,56 @@ public class p3 {
         try {
 
             DatagramSocket s = new DatagramSocket(2004);
-            byte[] ReceiveT = new byte[50];
-            DatagramPacket q = new DatagramPacket(ReceiveT, ReceiveT.length);
-            s.receive(q);
-            String ch = new String(q.getData());
-            ch = ch.trim();
-            System.out.println("Receive:" + ch + " From:" + q.getAddress() + "Port:" + q.getPort());
+            System.out.println("P3 running, waiting for UDP from P2...");
 
-            System.out.println("Creation de service sur le port 2005");
-            ServerSocket s1 = new ServerSocket(2005);
-            System.out.println("Waiting .....");
-            Socket connection = s1.accept();
-            System.out.println("Accpeted ....");
+            while (true) {
 
-            ObjectOutputStream out = new ObjectOutputStream(connection.getOutputStream());
-            out.writeObject(" Message :" + ch + "-YOUR NAME-");
+                // 1. Receive UDP from P2
+                byte[] receiveBuffer = new byte[1024]; // fixed: was 50
+                DatagramPacket q = new DatagramPacket(receiveBuffer, receiveBuffer.length);
+                s.receive(q);
 
-            ObjectInputStream in = new ObjectInputStream(connection.getInputStream());
+                // fixed: use q.getLength() to avoid null bytes
+                String ch = new String(q.getData(), 0, q.getLength());
+                ch = ch.trim();
 
-            String chi = (String) in.readObject();
-            System.out.println("Ch = " + chi);
+                System.out.println("P3 received from P2: " + ch);
+                System.out.println("P2 address: " + q.getAddress() + " Port: " + q.getPort());
 
-            byte[] dataToSend = chi.getBytes();
+                // 2. Connect to P4 as a CLIENT (fixed: was wrongly opening a ServerSocket)
+                Socket p4Socket = new Socket("P4_IP_ADDRESS", 2005); // replace with actual P4 IP
 
-            DatagramPacket q1 = new DatagramPacket(dataToSend, dataToSend.length, q.getAddress(), q.getPort());
+                ObjectOutputStream out = new ObjectOutputStream(p4Socket.getOutputStream());
+                ObjectInputStream in = new ObjectInputStream(p4Socket.getInputStream());
 
-            s.send(q1);
-            System.out.println("Message Sent");
+                // 3. Send message to P4
+                out.writeObject(ch);
+                out.flush();
+                System.out.println("P3 sent to P4: " + ch);
 
-            in.close();
-            out.close();
-            connection.close();
+                // 4. Receive result from P4
+                String result = (String) in.readObject();
+                System.out.println("P3 received from P4: " + result);
+
+                // 5. Send result back to P2 via UDP
+                byte[] dataToSend = result.getBytes();
+                DatagramPacket q1 = new DatagramPacket(
+                        dataToSend,
+                        dataToSend.length,
+                        q.getAddress(), // send back to P2's address
+                        q.getPort()     // send back to P2's port
+                );
+                s.send(q1);
+                System.out.println("P3 sent result back to P2 via UDP: " + result);
+
+                // 6. Close TCP connection to P4
+                in.close();
+                out.close();
+                p4Socket.close();
+            }
 
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
-
 }
